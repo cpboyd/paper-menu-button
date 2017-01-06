@@ -14,9 +14,12 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
 <link rel="import" href="../iron-dropdown/iron-dropdown.html">
 <link rel="import" href="../neon-animation/animations/fade-in-animation.html">
 <link rel="import" href="../neon-animation/animations/fade-out-animation.html">
+<link rel="import" href="../paper-material/paper-material.html">
 <link rel="import" href="../paper-styles/default-theme.html">
-<link rel="import" href="../paper-styles/shadow.html">
-<link rel="import" href="paper-menu-button-animations.html">
+<link rel="import" href="../paper-menu-button/paper-menu-button-animations.html">
+
+<link rel="import" href="../iron-selector/iron-selectable.html">
+<link rel="import" href="../paper-ripple/paper-ripple.html">
 
 <!--
 Material design: [Dropdown buttons](https://www.google.com/design/spec/components/buttons.html#buttons-dropdown-buttons)
@@ -60,7 +63,7 @@ Custom property | Description | Default
 @demo demo/index.html
 -->
 
-<dom-module id="paper-menu-button">
+<dom-module id="paper-menu-dropdown">
   <template>
     <style>
       :host {
@@ -89,6 +92,7 @@ Custom property | Description | Default
         position: relative;
         border-radius: 2px;
         background-color: var(--paper-menu-button-dropdown-background, --primary-background-color);
+        color: var(--paper-menu-color, --primary-text-color);
 
         @apply(--paper-menu-button-content);
       }
@@ -111,7 +115,9 @@ Custom property | Description | Default
     </style>
 
     <div id="trigger" on-tap="toggle">
-      <content select=".dropdown-trigger"></content>
+      <paper-ripple></paper-ripple>
+      [[selectedItemLabel]]
+      <iron-icon icon="arrow-drop-down"></iron-icon>
     </div>
 
     <iron-dropdown
@@ -130,9 +136,11 @@ Custom property | Description | Default
       allow-outside-scroll="[[allowOutsideScroll]]"
       restore-focus-on-close="[[restoreFocusOnClose]]"
       on-iron-overlay-canceled="__onIronOverlayCanceled">
-      <div class="dropdown-content">
-        <content id="content" select=".dropdown-content"></content>
-      </div>
+      <paper-material class="dropdown-content">
+        <template is="dom-repeat" items="{{itemLabels}}">
+          <paper-item>{{item}}</paper-item>
+        </template>
+      </paper-material>
     </iron-dropdown>
   </template>
 
@@ -145,8 +153,8 @@ Custom property | Description | Default
         MAX_ANIMATION_TIME_MS: 400
       };
 
-      var PaperMenuButton = Polymer({
-        is: 'paper-menu-button',
+      var PaperMenuDropdown = Polymer({
+        is: 'paper-menu-dropdown',
 
         /**
          * Fired when the dropdown opens.
@@ -162,7 +170,8 @@ Custom property | Description | Default
 
         behaviors: [
           Polymer.IronA11yKeysBehavior,
-          Polymer.IronControlState
+          Polymer.IronControlState,
+          Polymer.IronSelectableBehavior
         ],
 
         properties: {
@@ -174,6 +183,25 @@ Custom property | Description | Default
             value: false,
             notify: true,
             observer: '_openedChanged'
+          },
+          
+          /**
+           * The derived "label" of the currently selected item. This value
+           * is the `label` property on the selected item if set, or else the
+           * trimmed text content of the selected item.
+           */
+          selectedItemLabel: {
+            type: String,
+            notify: true,
+            readOnly: true,
+            computed: '_selectedItemChanged(selected, itemLabels)'
+          },
+      
+          /**
+           * Array of menu values.
+           */
+          itemLabels: {
+            type: Array
           },
 
           /**
@@ -399,6 +427,21 @@ Custom property | Description | Default
         },
 
         /**
+         * Compute the label for the dropdown given a selected item.
+         *
+         * @param {Element} selectedItem A selected Element item, with an
+         * optional `label` property.
+         */
+        _selectedItemChanged: function(selected, itemLabels) {
+          var value = '';
+          if (selected < 0 || !itemLabels || itemLabels.length < selected) {
+            return '';
+          } else {
+            return itemLabels[selected];
+          }
+        },
+
+        /**
          * When an `iron-select` event is received, the dropdown should
          * automatically close on the assumption that a value has been chosen.
          *
@@ -466,6 +509,34 @@ Custom property | Description | Default
           if (path.indexOf(trigger) > -1) {
             event.preventDefault();
           }
+        },
+
+        _updateItems: function() {
+          var nodes = Polymer.dom(this.$$('paper-material.dropdown-content')).queryDistributedElements(this.selectable || '*');
+          nodes = Array.prototype.filter.call(nodes, this._bindFilterItem);
+          this._setItems(nodes);
+        },
+        // observe items change under the given node.
+        _childNodesChanged: function(mutations) {
+          this._updateItems();
+          if (this._shouldUpdateSelection) {
+            this._updateSelected();
+          }
+          // Let other interested parties know about the change so that
+          // we don't have to recreate mutation observers everywher.
+          this.fire('iron-items-changed', mutations, {
+            bubbles: false,
+            cancelable: false
+          });
+        },
+        attached: function() {
+          var boundHandler = this._childNodesChanged.bind(this); 
+          this._observer = Polymer.dom(this.$$('paper-material.dropdown-content')).observeNodes(boundHandler);
+          this._updateItems();
+          if (!this._shouldUpdateSelection) {
+            this._updateSelected(this.attrForSelected,this.selected)
+          }
+          this._addListener(this.activateEvent);
         }
       });
 
@@ -473,7 +544,7 @@ Custom property | Description | Default
         PaperMenuButton[key] = config[key];
       });
 
-      Polymer.PaperMenuButton = PaperMenuButton;
+      Polymer.PaperMenuDropdown = PaperMenuDropdown;
     })();
   </script>
 </dom-module>
